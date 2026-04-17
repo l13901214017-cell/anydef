@@ -285,14 +285,8 @@ GCM 解密时会自动验证认证标签
 
 密文格式：
 
-enc:v1:AbC123xYz:DeF456uVw:GhI789rSt...==
-│   │   │        │        │
-│   │   │        │        └── 密文 + GCM 认证标签
-│   │   │        └── IV (12 bytes, Base64URL)
-│   │   └── 盐值 (16 bytes, Base64URL)
-│   └── 版本号 (便于未来升级)
-└── 协议标识
-示例密文：
+<img width="400" height="380" alt="c6a79622-c6f2-4bd1-ae8f-3b672f5284c9" src="https://github.com/user-attachments/assets/fe14c715-f559-42aa-9d61-11f4b09d57e9" />
+
 
 enc:v1:abc123XYZ:def456UVW:ghi789RST012JKLMNOP345...
 
