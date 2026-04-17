@@ -198,7 +198,7 @@ This skill pack runs in the **OpenClaw browser-side Artifact environment** — p
 ## Project Information
 
 - **Project Category:** AI Agent Intrinsic Security
-- **Source Code:** https://github.com/anydef-ai/anydef
+- **Source Code:** https://github.com/anydefai/anydef
 - **Project Initiator:** Lü Lixiao (Lu Lixiao) WX: lisolv
 - **Discussion WeChat Group:** AI Agent Intrinsic Security
 - **Project Sponsor:** Beijing Anydef Technology Co., Ltd.
@@ -210,12 +210,17 @@ anydef-encryption 技能包是一个为 OpenClaw 平台设计的 Agent 数据透
 核心价值
 
 透明性	：Agent 业务代码无需修改，加密/解密自动发生
+
 细粒度控制	：可按数据类型(files/memory/sessions等)分别开关
+
 安全合规	：AES-256-GCM + PBKDF2，支持密钥轮换和审计
+
 向后兼容	：未加密历史数据可正常读取
+
 可审计：完整的加密操作日志，不记录明文内容
 
  数据分类与加密范围
+ 
 1、上传文件内容 | `storage/files/` | 可选加密 
 
 2、对话 Memory | `storage/memory/` | 可选加密
@@ -230,9 +235,13 @@ anydef-encryption 技能包是一个为 OpenClaw 平台设计的 Agent 数据透
 
 
 核心架构说明
+
 用途与加密算法
+
 1、数据加密  ：AES-256-GCM 
+
 2、密钥派生 ： PBKDF2-HMAC-SHA256 (600k 轮) 
+
 3、 密钥包装 | AES-256-KW 
 
 三层密钥结构：层层包装、泄露隔离、轮换高效
@@ -253,27 +262,40 @@ anydef-encryption 技能包是一个为 OpenClaw 平台设计的 Agent 数据透
          └──► metadata-dek  (加密向量元数据)
 
 密钥三层结构（MK → KEK → DEK）
+
 每个Agent初始化时，会为 files / memory / sessions / tool_results 四个 scope 各自生成一个独立的随机 DEK，用 KEK 加密后存入 window.storage。解密时先用密码还原 KEK，再用 KEK 解包对应 scope 的 DEK，最后才解密数据。memory 泄露不影响 files，scope 之间完全隔离。
 
 密钥轮换
+
 支持两种模式：常规轮换（旧 DEK 保留到下次轮换）和紧急轮换（旧 DEK 立即删除）。轮换时自动扫描该 Agent 下所有加密数据，用新 DEK 逐条重新加密写回，密钥版本号从 v1 递增为 v2、v3…
+
 审计日志
+
 每次 setup、encrypt、decrypt、密钥轮换、禁用操作都会写一条日志到 window.storage，记录时间、操作类型、scope、密钥版本。管理面板里有独立的审计日志 Tab，支持按操作类型筛选和清空。
 
 
 设计特点：
 
 单个 DEK 泄露只影响一类数据
+
 密钥轮换只需重加密对应数据类型
+
 主密钥泄露只需重新包装 KEK
+
 每次加密都生成新的 salt 和 IV— 绝不重用
+
 PBKDF2 600,000 轮迭代— NIST 2023 推荐
+
 GCM 模式自带认证— 防篡改
+
 GCM 解密时会自动验证认证标签
+
 如果数据被篡改，解密失败抛异常（不静默失败）
+
 未加密数据自动透传（向后兼容）
 
 密文格式：
+
 enc:v1:AbC123xYz:DeF456uVw:GhI789rSt...==
 │   │   │        │        │
 │   │   │        │        └── 密文 + GCM 认证标签
@@ -286,19 +308,30 @@ enc:v1:AbC123xYz:DeF456uVw:GhI789rSt...==
 enc:v1:abc123XYZ:def456UVW:ghi789RST012JKLMNOP345...
 
 协议标识，便于版本升级
+
 salt/iv 每次随机生成，绝不复用
 
 核心组件
+
 EncryptionManager — Python API 主类
+
 EncryptedStorageAdapter — 透明加密装饰器
+
 EncryptedFileStorage — 文件加密适配器
 
+
  核心模块说明
+ 
 - `references/encryption-core.md` — 加密算法与密钥管理
+- 
 - `references/agent-config.md` — Agent 配置格式与 API
+- 
 - `references/storage-adapter.md` — 存储适配器实现
+- 
 - `scripts/encrypt_migrate.py` — 现有数据迁移加密脚本
+- 
 - `scripts/key_rotation.py` — 密钥轮换脚本
+- 
 - `scripts/audit_log.py` — 加密审计日志查看器
  
 三种加密应用策略：
@@ -306,44 +339,56 @@ EncryptedFileStorage — 文件加密适配器
 只加密 files + memory，性能影响最小。
 
 最轻量：只加密 memory
+
 平衡：files + memory（推荐）
+
 最高安全：全部加密
 
 
 三种使用情景
+
 情景 A：新 Agent 从零配置
+
 情景 B：现有 Agent 追加加密
+
 情景 C：密钥泄露应急响应
 
 
 ⚠️ 关键安全约定
+
 主密钥不落盘：仅内存或 KMS或第三方托管平台
+
 失败关闭原则：加密失败不退化为明文，抛异常
+
 密钥轮换周期： ≤ 90 天
+
 解密错误必须告警 ：不能静默失败
+
 向后兼容：未加密的历史数据可继续读取，不强制迁移
+
 密文格式标记：所有加密字段带 `enc:v1:` 前缀，便于识别和版本升级
 
-💡 推荐加密策略配置模式
-最轻量（入门）：只加密 memory
-
-平衡（推荐）：files + memory
-最高安全（金融/医疗）：全量加密
 
 日常使用：完全透明，无需操心
+
 配置好之后，正常使用 Agent 即可，加密/解密完全在后台自动发生：
 
 Agent 保存记忆 → 自动加密后存储
+
 Agent 读取记忆 → 自动解密后使用
+
 你上传文件 → 文件内容自动加密存储
+
 唯一的区别是：如果去 storage 里直接查看原始数据，看到的会是类似这样的密文，而不是明文：enc:v2:abc123XYZ:def456UVW:ghi789RST...
 
 查看或修改加密状态
+
 对话框里说：
 
 "查看 agent_001 的加密配置" "给 agent_001 关闭 sessions 加密" "帮我把 agent_002 的加密全部禁用"
 
 迁移旧数据（从未加密升级到加密）
+
 如果 Agent 之前没有加密，已经存了一些数据，可以说：
 
 "帮我把 agent_001 现有的 Memory 数据都加密"
@@ -351,6 +396,7 @@ Agent 读取记忆 → 自动解密后使用
 技能包会扫描所有明文条目，用你提供的密码逐条加密写回，原数据不会丢失。
 
 重要提醒：
+
 主密钥丢失无法找回，建议把主密钥存在密码管理器里（1Password、第三方KMS等），或者记在安全的地方。
 
 换设备/浏览器后需要重新输入密码，加密数据会跟着 window.storage 同步，但解密需要你再次提供主密钥。
@@ -359,16 +405,25 @@ Agent 读取记忆 → 自动解密后使用
 
 
 使用环境：
+
 本技能包运行在 OpenClaw 浏览器端 Artifact 环境，纯本地计算，零网络依赖，浏览器环境中加解密API调用不会因为网络问题触发错误回退。
 
 当前验证情况：
+
 1、第三方密钥管理平台： 已实现openclaw官方集成的1Password的平台对接并实现所有功能。 AWS/Google/Aliyun/HuaweiCloud的KMS对接验证中
+
 2、已实现openclaw环境的集成。 Hermes/Claude Code等智能体的对接验证中
+
 3、数据加密的业务场景已验证
+
 4、基于浏览器原生 Web Crypto API框架的对话场景已验证。 微信/QQ/飞书/钉钉等场景计划下个版本
 
 项目所属： AI智能体内生安全
-源码地址：https://github.com/anydef-ai/anydef
+
+源码地址：https://github.com/anydefai/anydef
+
 项目发起人：吕鹂啸 WX： lisolv  
+
 交流WX群：AI智能体内生安全
+
 项目赞助商：北京安御道合科技有限公司
